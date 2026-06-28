@@ -1,0 +1,14 @@
+{
+  // パッケージ(.exe)用ビルド設定。tsconfig.json を継承し emit を有効化。
+  // 重要: outDir / rootDir は指定しない。指定すると tsc が outDir を exclude に
+  //   自動追加して include を全除外し TS18003(No inputs found) で .js を一切出さない。
+  //   未指定＝ソース隣に in-place 出力（src/*.ts→src/*.js, electron/*.ts→electron/*.js）。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts", "electron/**/*.ts"]
+}

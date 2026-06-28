@@ -1,0 +1,71 @@
+{
+  "name": "zenno",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "全脳（ZENNO）— Claude Code のエンジンを中核に、GPT・Gemini など複数の生産AIを道具として合体させた統合ターミナル開発エージェント",
+  "main": "electron/start.cjs",
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "dev": "tsx watch src/cli.ts",
+    "app": "electron .",
+    "typecheck": "tsc --noEmit",
+    "sync:check": "tsx scripts/sync-check.mts",
+    "build:js": "tsc -p tsconfig.build.json",
+    "clean:js": "node -e \"const{readdirSync,rmSync,statSync,existsSync}=require('fs');const{join}=require('path');function w(d){if(!existsSync(d))return;for(const e of readdirSync(d)){const p=join(d,e);if(statSync(p).isDirectory())w(p);else if(e.endsWith('.js'))rmSync(p);}}w('src');if(existsSync('electron/main.js'))rmSync('electron/main.js');console.log('cleaned emitted .js');\"",
+    "dist:dir": "npm run build:js && electron-builder --win dir",
+    "dist:portable": "npm run build:js && electron-builder --win portable",
+    "dist": "npm run build:js && electron-builder --win dir portable"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "electron-updater": "^6.8.9",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^24.13.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "build": {
+    "appId": "com.connect.igsh",
+    "productName": "IGSH",
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "files": [
+      "electron/**/*.js",
+      "electron/**/*.cjs",
+      "electron/renderer/**/*",
+      "src/**/*.js",
+      "knowledge/**/*",
+      "package.json",
+      "!**/*.ts",
+      "!**/*.map"
+    ],
+    "asarUnpack": [
+      "node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/**"
+    ],
+    "win": {
+      "icon": "igsh.ico",
+      "target": [
+        "dir",
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "IGSH-${version}-portable.exe"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "REPLACE_WITH_GITHUB_USER",
+        "repo": "zenno"
+      }
+    ]
+  }
+}

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"
+    />
+    <title>IGSH</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- 左サイドバー: 最近の項目 -->
+      <aside id="sidebar">
+        <div class="side-head">
+          <span class="side-brand">IGSH</span>
+          <button id="btn-new" class="newbtn" title="新しいセッションを開始">＋ 新規</button>
+        </div>
+        <div class="side-label">最近の項目</div>
+        <div class="side-list" id="session-list"></div>
+      </aside>
+
+      <!-- 右: 本体 -->
+      <div id="content">
+        <!-- ステータスバー -->
+        <header id="statusbar">
+          <span class="brand">IGSH</span>
+          <span class="chip"><span class="k">model</span><span class="v" id="v-model">best</span></span>
+          <span class="chip"><span class="v" id="v-auth">—</span></span>
+          <span class="chip"><span class="k">effort</span><span class="v" id="v-effort">xhigh</span></span>
+          <span class="chip ok"><span class="dot"></span><span>破壊ガード ON</span></span>
+          <span class="chip" id="chip-gpt"><span class="k">GPT</span><span class="v" id="v-gpt">○</span></span>
+          <span class="chip" id="chip-gem"><span class="k">Gemini</span><span class="v" id="v-gem">○</span></span>
+          <span class="spacer"></span>
+          <span class="chip ghost"><span class="v" id="v-cwd">—</span></span>
+          <span class="chip"><span class="k">予算</span><span class="v" id="v-budget">無制限</span></span>
+          <span class="chip cost"><span class="k">合計</span><span class="v" id="v-cost">$0.0000</span></span>
+        </header>
+
+        <!-- チャットログ -->
+        <main id="log" role="log" aria-live="polite"></main>
+
+        <!-- 入力 + ツールバー -->
+        <footer id="composer">
+          <div class="input-row">
+            <textarea
+              id="input"
+              rows="1"
+              placeholder="指示を入力…  (Enter送信 / Shift+Enter改行)"
+              aria-label="IGSHへの指示"
+            ></textarea>
+            <button id="btn-send" class="send" title="送信 (Enter)">送信</button>
+          </div>
+          <div class="toolbar">
+            <button class="tool" data-cmd="/undo" title="直近ターンを巻き戻す">/undo</button>
+            <button class="tool" data-cmd="/cost" title="コストの内訳">/cost</button>
+            <button class="tool" data-cmd="/verify" title="今すぐ検証">/verify</button>
+            <button class="tool" data-cmd="/projects" title="登録プロジェクト一覧">/projects</button>
+            <button class="tool danger" id="btn-stop" data-cmd="/stop" title="実行中を中断">/stop</button>
+            <span class="spacer"></span>
+            <button class="tool" id="btn-cwd" title="作業フォルダを選ぶ">作業フォルダ</button>
+            <button class="tool" id="btn-settings" title="トークン設定">設定</button>
+          </div>
+        </footer>
+      </div>
+    </div>
+
+    <!-- トークン設定モーダル -->
+    <div id="modal" class="modal hidden">
+      <div class="modal-card">
+        <h2>動作設定</h2>
+        <div class="setting-grid">
+          <label>モデル
+            <select id="set-model">
+              <option value="claude-opus-4-8">Opus 4.8（Fast対応・高速）</option>
+              <option value="claude-fable-5">Fable 5（最高品質・Fast非対応）</option>
+              <option value="best">best（自動選択）</option>
+              <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+              <option value="claude-haiku-4-5">Haiku 4.5</option>
+            </select>
+          </label>
+          <label>思考の深さ effort
+            <select id="set-effort">
+              <option value="low">low（最速・低コスト）</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="xhigh">xhigh（既定）</option>
+              <option value="max">max（最高品質）</option>
+            </select>
+          </label>
+          <label class="set-check"><input type="checkbox" id="set-fast" /> Fast mode（Opusのまま最大2.5倍速）</label>
+          <label>コスト上限 USD（0＝無制限）
+            <input type="number" id="set-budget" min="0" step="1" placeholder="0" />
+          </label>
+        </div>
+        <div class="modal-actions">
+          <span class="muted set-note">保存するとアプリが再起動して反映されます</span>
+          <span class="spacer"></span>
+          <button id="settings-save" class="send">保存して再起動</button>
+        </div>
+        <hr class="modal-sep" />
+        <h2>認証トークンの設定</h2>
+        <p class="muted">
+          Claude Pro/Max のサブスクで動かすには、ターミナルで
+          <code>claude setup-token</code> を実行して出たトークンを下に貼り付けてください（追加課金ゼロ）。
+        </p>
+        <p class="muted">
+          手順:
+          <a href="#" id="link-doc">claude setup-token のドキュメントを開く</a>
+        </p>
+        <input id="token-input" type="password" placeholder="CLAUDE_CODE_OAUTH_TOKEN を貼り付け" />
+        <div id="enc-warn" class="warn hidden">このOSでは暗号化保存が使えません（safeStorage利用不可）</div>
+        <div class="modal-actions">
+          <button id="token-clear" class="tool danger">削除</button>
+          <span class="spacer"></span>
+          <button id="token-cancel" class="tool">閉じる</button>
+          <button id="token-save" class="send">保存して開始</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

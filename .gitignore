@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.*
+secret.bin
+*.log
+dist/
+release/
+out/
+
+# ビルドで生成される .js（dev は tsx で .ts を直接実行）
+electron/main.js
+src/**/*.js
+
+# 業務情報（本番URL・物件数・固有ノウハウ）は公開しない。ローカル/.exe同梱には残る
+knowledge/projects.json
+knowledge/preferences.md
