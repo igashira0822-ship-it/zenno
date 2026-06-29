@@ -35,6 +35,10 @@ contextBridge.exposeInMainWorld("zenno", {
   listSessions: () => ipcRenderer.invoke("igsh:list_sessions"),
   newSession: () => ipcRenderer.invoke("igsh:new_session"),
   openSession: (id) => ipcRenderer.invoke("igsh:open_session", id),
+  listArchived: () => ipcRenderer.invoke("igsh:list_archived"),
+  archiveSession: (id) => ipcRenderer.invoke("igsh:archive_session", id),
+  unarchiveSession: (id) => ipcRenderer.invoke("igsh:unarchive_session", id),
+  deleteSession: (id) => ipcRenderer.invoke("igsh:delete_session", id),
   // 動作設定
   getSettings: () => ipcRenderer.invoke("igsh:get_settings"),
   saveSettings: (s) => ipcRenderer.invoke("igsh:save_settings", s),

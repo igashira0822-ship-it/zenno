@@ -508,16 +508,40 @@ body {
 .side-list { flex: 1 1 auto; overflow-y: auto; padding: 0 8px 12px; }
 .side-empty { color: var(--text-faint); font-size: 12px; padding: 10px 6px; }
 .side-item {
-  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
-  background: transparent; color: var(--text); border: 0; border-radius: 8px;
-  padding: 8px 10px; margin-bottom: 2px; cursor: pointer; font-family: var(--sans);
+  display: flex; flex-direction: row; align-items: center; gap: 2px;
+  width: 100%; border-radius: 8px; margin-bottom: 2px;
 }
 .side-item:hover { background: var(--bg-2); }
+.si-main {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  background: transparent; color: var(--text); border: 0;
+  padding: 8px 10px; cursor: pointer; font-family: var(--sans);
+}
 .si-title {
   font-size: 13px; color: var(--text-bright);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;
 }
 .si-time { font-size: 11px; color: var(--text-faint); }
+/* 各項目のアクション（アーカイブ/復元/削除）。ホバーで表示 */
+.si-actions { display: flex; gap: 2px; padding-right: 6px; opacity: 0; transition: opacity .12s; flex: 0 0 auto; }
+.side-item:hover .si-actions { opacity: 1; }
+.si-act {
+  background: transparent; border: 0; color: var(--text-faint); cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 3px 5px; border-radius: 6px;
+}
+.si-act:hover { background: var(--cyan-line); color: var(--text-bright); }
+.si-del:hover { background: rgba(255, 90, 90, .18); color: var(--red); }
+/* アーカイブ表示トグル＋一覧 */
+.side-archive-toggle {
+  width: calc(100% - 16px); margin: 2px 8px 6px; padding: 6px 10px; text-align: left;
+  background: transparent; border: 0; color: var(--text-faint); font-size: 12px;
+  cursor: pointer; border-radius: 8px; font-family: var(--sans);
+}
+.side-archive-toggle:hover { background: var(--bg-2); color: var(--text); }
+.side-archive-toggle .arrow { display: inline-block; transition: transform .12s; }
+.side-archive-toggle.open .arrow { transform: rotate(90deg); }
+.side-archive { flex: 0 0 auto; max-height: 38%; }
 
 /* ===== 差分プレビュー（Claude Code 風） ===== */
 .fileedit {

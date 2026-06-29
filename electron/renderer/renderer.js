@@ -425,6 +425,59 @@ function relTime(ms) {
   if (s < 86400) return `${Math.floor(s / 3600)}時間前`;
   return `${Math.floor(s / 86400)}日前`;
 }
+// 1項目を生成（archived=true なら復元ボタン、false ならアーカイブボタン。両方に削除）。
+function makeSessionItem(s, archived) {
+  const el = document.createElement("div");
+  el.className = "side-item";
+  const main = document.createElement("button");
+  main.className = "si-main";
+  main.innerHTML =
+    `<span class="si-title">${escapeHtml(s.title || "（無題）")}</span>` +
+    `<span class="si-time">${relTime(s.updatedAt)}</span>`;
+  main.addEventListener("click", () => window.zenno.openSession(s.id));
+
+  const actions = document.createElement("div");
+  actions.className = "si-actions";
+
+  const act = document.createElement("button");
+  act.className = "si-act";
+  if (archived) {
+    act.title = "復元";
+    act.textContent = "↩";
+    act.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await window.zenno.unarchiveSession(s.id);
+      refreshSidebar();
+    });
+  } else {
+    act.title = "アーカイブ（一覧から隠すが残す）";
+    act.textContent = "📦";
+    act.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await window.zenno.archiveSession(s.id);
+      refreshSidebar();
+    });
+  }
+  actions.appendChild(act);
+
+  const del = document.createElement("button");
+  del.className = "si-act si-del";
+  del.title = "完全に削除";
+  del.textContent = "🗑";
+  del.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (confirm(`「${s.title || "（無題）"}」を完全に削除しますか？（元に戻せません）`)) {
+      await window.zenno.deleteSession(s.id);
+      refreshSidebar();
+    }
+  });
+  actions.appendChild(del);
+
+  el.appendChild(main);
+  el.appendChild(actions);
+  return el;
+}
+
 function renderSessions(list) {
   $sessionList.innerHTML = "";
   if (!list || !list.length) {
@@ -434,21 +487,50 @@ function renderSessions(list) {
     $sessionList.appendChild(e);
     return;
   }
-  for (const s of list) {
-    const el = document.createElement("button");
-    el.className = "side-item";
-    el.innerHTML =
-      `<span class="si-title">${escapeHtml(s.title || "（無題）")}</span>` +
-      `<span class="si-time">${relTime(s.updatedAt)}</span>`;
-    el.addEventListener("click", () => window.zenno.openSession(s.id));
-    $sessionList.appendChild(el);
+  for (const s of list) $sessionList.appendChild(makeSessionItem(s, false));
+}
+
+// ── アーカイブ表示トグル ──
+const $archiveList = document.getElementById("archive-list");
+const $archiveToggle = document.getElementById("btn-archive-toggle");
+const $archiveCount = document.getElementById("archive-count");
+let archiveOpen = false;
+
+async function refreshSidebar() {
+  try {
+    renderSessions(await window.zenno.listSessions());
+  } catch {}
+  let arch = [];
+  try {
+    arch = (await window.zenno.listArchived()) || [];
+  } catch {}
+  $archiveCount.textContent = arch.length ? `(${arch.length})` : "";
+  $archiveList.innerHTML = "";
+  if (archiveOpen) {
+    if (!arch.length) {
+      const e = document.createElement("div");
+      e.className = "side-empty";
+      e.textContent = "アーカイブは空です";
+      $archiveList.appendChild(e);
+    } else {
+      for (const s of arch) $archiveList.appendChild(makeSessionItem(s, true));
+    }
   }
 }
-window.zenno.onSessions(renderSessions);
+
+$archiveToggle.addEventListener("click", () => {
+  archiveOpen = !archiveOpen;
+  $archiveList.hidden = !archiveOpen;
+  $archiveToggle.classList.toggle("open", archiveOpen);
+  refreshSidebar();
+});
+
+// メインからの一覧 push でも件数を保つため refreshSidebar 経由で再描画。
+window.zenno.onSessions(() => refreshSidebar());
 window.zenno.onLoadTranscript(renderTranscript);
 window.zenno.onClearLog(clearLog);
 document.getElementById("btn-new").addEventListener("click", () => window.zenno.newSession());
-window.zenno.listSessions().then(renderSessions).catch(() => {});
+refreshSidebar();
 
 $stop.disabled = true;
 $input.focus();

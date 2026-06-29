@@ -13,7 +13,7 @@ import {
 } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import electronUpdater from "electron-updater";
 
 const { autoUpdater } = electronUpdater;
@@ -77,6 +77,14 @@ function ensureSessionsDir() {
   if (!existsSync(d)) mkdirSync(d, { recursive: true });
   return d;
 }
+// アーカイブは sessionsDir 直下の archive/ サブフォルダへ退避する。
+// listSessions は *.json のみ拾う（"archive" フォルダは .json で終わらないので自動的に一覧から外れる）。
+const archiveDir = () => join(sessionsDir(), "archive");
+function ensureArchiveDir() {
+  const d = archiveDir();
+  if (!existsSync(d)) mkdirSync(d, { recursive: true });
+  return d;
+}
 function newSessionRecord(cwd: string): SessionRecord {
   const now = Date.now();
   return {
@@ -125,13 +133,81 @@ function listSessions(): Array<Pick<SessionRecord, "id" | "title" | "createdAt" 
   }
 }
 function loadSession(id: string): SessionRecord | null {
-  try {
-    const p = join(sessionsDir(), `${id}.json`);
-    if (!existsSync(p)) return null;
-    return JSON.parse(readFileSync(p, "utf8")) as SessionRecord;
-  } catch {
-    return null;
+  // 通常／アーカイブのどちらに居ても開けるよう両方を探す。
+  for (const dir of [sessionsDir(), archiveDir()]) {
+    const p = join(dir, `${id}.json`);
+    if (existsSync(p)) {
+      try {
+        return JSON.parse(readFileSync(p, "utf8")) as SessionRecord;
+      } catch {
+        return null;
+      }
+    }
   }
+  return null;
+}
+
+// アーカイブ済みセッションの一覧（archive/ サブフォルダのみ・updatedAt 降順）。
+function listArchived(): Array<Pick<SessionRecord, "id" | "title" | "createdAt" | "updatedAt" | "cwd">> {
+  try {
+    const d = archiveDir();
+    if (!existsSync(d)) return [];
+    return readdirSync(d)
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => {
+        try {
+          const r = JSON.parse(readFileSync(join(d, f), "utf8")) as SessionRecord;
+          return { id: r.id, title: r.title, createdAt: r.createdAt, updatedAt: r.updatedAt, cwd: r.cwd };
+        } catch {
+          return null;
+        }
+      })
+      .filter((x): x is NonNullable<typeof x> => !!x)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  } catch {
+    return [];
+  }
+}
+
+// id のセッションを archive/ へ退避（一覧から外れるが残る・復元可）。
+function archiveSession(id: string): boolean {
+  try {
+    const src = join(sessionsDir(), `${id}.json`);
+    if (!existsSync(src)) return false;
+    ensureArchiveDir();
+    renameSync(src, join(archiveDir(), `${id}.json`));
+    return true;
+  } catch {
+    return false;
+  }
+}
+// archive/ から通常へ戻す。
+function unarchiveSession(id: string): boolean {
+  try {
+    const src = join(archiveDir(), `${id}.json`);
+    if (!existsSync(src)) return false;
+    ensureSessionsDir();
+    renameSync(src, join(sessionsDir(), `${id}.json`));
+    return true;
+  } catch {
+    return false;
+  }
+}
+// 完全削除（通常・アーカイブのどちらにあっても消す・元に戻せない）。
+function deleteSession(id: string): boolean {
+  let removed = false;
+  for (const dir of [sessionsDir(), archiveDir()]) {
+    const p = join(dir, `${id}.json`);
+    try {
+      if (existsSync(p)) {
+        rmSync(p);
+        removed = true;
+      }
+    } catch {}
+  }
+  // 表示中セッションを消したら、保存で復活しないよう参照を切る。
+  if (removed && current?.id === id) current = null;
+  return removed;
 }
 const pushSessionList = () => send("igsh:sessions", listSessions());
 
@@ -450,6 +526,22 @@ ipcMain.handle("igsh:open_session", async (_e, id: string) => {
   saveWorkCwd(workCwd);
   await startEngine(rec);
   return true;
+});
+ipcMain.handle("igsh:list_archived", () => listArchived());
+ipcMain.handle("igsh:archive_session", (_e, id: string) => {
+  const ok = archiveSession(id);
+  pushSessionList();
+  return ok;
+});
+ipcMain.handle("igsh:unarchive_session", (_e, id: string) => {
+  const ok = unarchiveSession(id);
+  pushSessionList();
+  return ok;
+});
+ipcMain.handle("igsh:delete_session", (_e, id: string) => {
+  const ok = deleteSession(id);
+  pushSessionList();
+  return ok;
 });
 // 動作設定の取得 / 保存（保存は .env を書いてアプリ再起動で反映）
 ipcMain.handle("igsh:get_settings", async () => {
