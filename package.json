@@ -15,7 +15,8 @@
     "clean:js": "node -e \"const{readdirSync,rmSync,statSync,existsSync}=require('fs');const{join}=require('path');function w(d){if(!existsSync(d))return;for(const e of readdirSync(d)){const p=join(d,e);if(statSync(p).isDirectory())w(p);else if(e.endsWith('.js'))rmSync(p);}}w('src');if(existsSync('electron/main.js'))rmSync('electron/main.js');console.log('cleaned emitted .js');\"",
     "dist:dir": "npm run build:js && electron-builder --win dir",
     "dist:portable": "npm run build:js && electron-builder --win portable",
-    "dist": "npm run build:js && electron-builder --win dir portable"
+    "dist": "npm run build:js && electron-builder --win dir portable",
+    "dist:publish": "npm run build:js && electron-builder --win nsis --publish always"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.0",
@@ -53,7 +54,7 @@
     "win": {
       "icon": "igsh.ico",
       "target": [
-        "dir",
+        "nsis",
         "portable"
       ]
     },
