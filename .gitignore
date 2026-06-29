@@ -5,6 +5,7 @@ secret.bin
 *.log
 dist/
 release/
+release-publish/
 out/
 
 # ビルドで生成される .js（dev は tsx で .ts を直接実行）
