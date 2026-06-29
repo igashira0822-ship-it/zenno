@@ -10,6 +10,8 @@ import { knowledgeServer } from "./knowledgeTools.js";
 import { ogServer } from "./ogTools.js";
 import { deployServer } from "./deployTools.js";
 import { dbServer } from "./dbTools.js";
+import { webServer } from "./webTools.js";
+import { netlifyServer } from "./netlifyTools.js";
 import { matchByCwd, formatContext, formatList, findByName } from "./registry.js";
 import { formatPreferencesContext } from "./preferences.js";
 import { ledger } from "./ledger.js";
@@ -255,6 +257,8 @@ export function createEngine(opts: {
         og: ogServer,
         deploy: deployServer,
         db: dbServer,
+        web: webServer,
+        netlify: netlifyServer,
       },
     } as any,
   });
