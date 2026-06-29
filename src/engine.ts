@@ -18,6 +18,9 @@ import { runVerification, runFullVerification } from "./verify.js";
 
 export type EngineStatus = "idle" | "thinking" | "interrupted" | "closed";
 
+// 貼り付け/添付画像（base64・data: プレフィックス無し）。Claude へ image ブロックで渡す。
+export type ImageInput = { media_type: string; data: string };
+
 export type EngineEvent =
   | { type: "assistant_text"; text: string }
   | { type: "assistant_delta"; text: string }
@@ -46,7 +49,7 @@ export interface BannerInfo {
 }
 
 export interface Engine {
-  sendUserMessage(text: string): void;
+  sendUserMessage(text: string, images?: ImageInput[]): void;
   runSlash(t: string): Promise<boolean>; // false = 終了要求(exit)
   setModel(name: string): Promise<void>;
   interrupt(): Promise<void>;
@@ -167,12 +170,13 @@ export function editPreview(
 
 // ユーザー入力を「途切れない1つのセッション」へ流すブリッジ（cli.ts と同一・無変更）。
 function createInput() {
-  const pending: string[] = [];
+  // content は文字列（テキストのみ）か、image を含むブロック配列。
+  const pending: Array<string | any[]> = [];
   let notify: (() => void) | null = null;
   let finished = false;
   return {
-    push(text: string) {
-      pending.push(text);
+    push(content: string | any[]) {
+      pending.push(content);
       const n = notify;
       notify = null;
       n?.();
@@ -401,14 +405,27 @@ export function createEngine(opts: {
     return true;
   };
 
-  const sendUserMessage = (text: string) => {
+  const sendUserMessage = (text: string, images?: ImageInput[]) => {
     editedThisTurn = false;
     if (isGitRepo(cwd)) {
       const cp = createCheckpoint(cwd, text.slice(0, 50));
       if (cp) onEvent({ type: "checkpoint", id: cp.id, label: text.slice(0, 50) });
     }
     setStatus("thinking");
-    input.push(text);
+    if (images && images.length) {
+      // テキスト（あれば）＋画像ブロックの content 配列で送る（Anthropic image source 形式）。
+      const content: any[] = [];
+      if (text) content.push({ type: "text", text });
+      for (const im of images) {
+        content.push({
+          type: "image",
+          source: { type: "base64", media_type: im.media_type, data: im.data },
+        });
+      }
+      input.push(content);
+    } else {
+      input.push(text);
+    }
   };
 
   const bannerInfo = (): BannerInfo => ({

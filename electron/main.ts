@@ -56,8 +56,9 @@ const send = (channel: string, payload: unknown) => win?.webContents.send(channe
 const secretFile = () => join(app.getPath("userData"), "secret.bin");
 
 // ───────────────── セッション履歴 ─────────────────
+type ChatImage = { media_type: string; data: string };
 type SessionItem =
-  | { role: "user"; text: string }
+  | { role: "user"; text: string; images?: ChatImage[] }
   | { role: "igsh"; text: string }
   | { role: "note"; text: string };
 interface SessionRecord {
@@ -109,7 +110,8 @@ function appendItem(item: SessionItem) {
   if (!current) return;
   current.items.push(item);
   if (item.role === "user" && (current.title === "新しいセッション" || !current.title)) {
-    current.title = item.text.slice(0, 40);
+    const t = item.text.trim() || (item.images?.length ? "🖼 画像" : "");
+    if (t) current.title = t.slice(0, 40);
   }
   saveCurrent();
 }
@@ -487,10 +489,13 @@ ipcMain.handle("zenno:clear_token", async () => {
   await disposeEngine();
   return true;
 });
-ipcMain.handle("zenno:user_message", (_e, text: string) => {
-  appendItem({ role: "user", text });
-  engine?.sendUserMessage(text);
-});
+ipcMain.handle(
+  "zenno:user_message",
+  (_e, payload: { text: string; images?: ChatImage[] }) => {
+    appendItem({ role: "user", text: payload.text, images: payload.images });
+    engine?.sendUserMessage(payload.text, payload.images);
+  }
+);
 ipcMain.handle("zenno:slash", async (_e, cmd: string) => {
   const cont = await engine?.runSlash(cmd);
   if (cont === false) {

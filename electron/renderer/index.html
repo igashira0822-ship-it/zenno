@@ -47,15 +47,18 @@
 
         <!-- 入力 + ツールバー -->
         <footer id="composer">
+          <div id="attach-preview" class="attach-preview" hidden></div>
           <div class="input-row">
+            <button id="btn-attach" class="attach-btn" title="画像を添付（スクショは Ctrl+V でも貼れます）">📎</button>
             <textarea
               id="input"
               rows="1"
-              placeholder="指示を入力…  (Enter送信 / Shift+Enter改行)"
+              placeholder="指示を入力…  画像は Ctrl+V で貼り付け / 📎 で添付  (Enter送信 / Shift+Enter改行)"
               aria-label="IGSHへの指示"
             ></textarea>
             <button id="btn-send" class="send" title="送信 (Enter)">送信</button>
           </div>
+          <input id="file-input" type="file" accept="image/*" multiple hidden />
           <div class="toolbar">
             <button class="tool" data-cmd="/undo" title="直近ターンを巻き戻す">/undo</button>
             <button class="tool" data-cmd="/cost" title="コストの内訳">/cost</button>

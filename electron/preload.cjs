@@ -21,7 +21,7 @@ ipcRenderer.on("igsh:clear_log", () => clearLogCb && clearLogCb());
 
 contextBridge.exposeInMainWorld("zenno", {
   // レンダラ → メイン
-  send: (text) => ipcRenderer.invoke("zenno:user_message", text),
+  send: (text, images) => ipcRenderer.invoke("zenno:user_message", { text, images }),
   slash: (cmd) => ipcRenderer.invoke("zenno:slash", cmd),
   setModel: (name) => ipcRenderer.invoke("zenno:set_model", name),
   interrupt: () => ipcRenderer.invoke("zenno:interrupt"),

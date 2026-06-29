@@ -623,3 +623,37 @@ body {
   border: 0.5px solid var(--line);
   border-radius: 8px;
 }
+
+/* ===== 画像の添付（入力欄）＋ユーザー送信画像 ===== */
+.attach-btn {
+  flex: 0 0 auto;
+  background: var(--bg-2);
+  border: 0.5px solid var(--line-2);
+  color: var(--text-faint);
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.attach-btn:hover { color: var(--text-bright); border-color: var(--cyan-line); }
+.attach-preview { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 2px 8px; }
+.attach-preview[hidden] { display: none; }
+.att-thumb { position: relative; width: 64px; height: 64px; }
+.att-thumb img {
+  width: 64px; height: 64px; object-fit: cover;
+  border-radius: 8px; border: 0.5px solid var(--line);
+}
+.att-x {
+  position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;
+  border-radius: 50%; border: 0; background: var(--bg-0); color: #fff;
+  font-size: 13px; line-height: 1; cursor: pointer; box-shadow: 0 0 0 1px var(--line);
+}
+.att-x:hover { background: var(--red); }
+#composer.drag { outline: 2px dashed var(--cyan-line); outline-offset: -4px; border-radius: 8px; }
+.u-text { white-space: pre-wrap; }
+.u-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.u-img {
+  max-width: 240px; max-height: 240px;
+  border-radius: 8px; border: 0.5px solid #1d3a48;
+}

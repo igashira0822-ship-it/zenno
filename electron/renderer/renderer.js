@@ -102,8 +102,28 @@ function turn(role, who) {
   $log.appendChild(el);
   return body;
 }
-function addUser(text) {
-  turn("user", "あなた").textContent = text;
+function imgUrl(im) {
+  return `data:${im.media_type};base64,${im.data}`;
+}
+function addUser(text, images) {
+  const body = turn("user", "あなた");
+  if (text) {
+    const p = document.createElement("div");
+    p.className = "u-text";
+    p.textContent = text;
+    body.appendChild(p);
+  }
+  if (images && images.length) {
+    const wrap = document.createElement("div");
+    wrap.className = "u-images";
+    for (const im of images) {
+      const img = document.createElement("img");
+      img.className = "u-img";
+      img.src = imgUrl(im);
+      wrap.appendChild(img);
+    }
+    body.appendChild(wrap);
+  }
   scrollEnd();
 }
 function addZennoText(text) {
@@ -302,16 +322,19 @@ window.zenno.onEvent((ev) => {
 // ── 送信 ──
 function submit() {
   const text = $input.value.trim();
-  if (!text || streaming) return;
+  const images = pendingImages.slice();
+  if ((!text && !images.length) || streaming) return;
   if (text.startsWith("/")) {
+    // スラッシュコマンドは画像を伴わない（添付は残す）
     if (text.toLowerCase() === "/stop") window.zenno.interrupt();
     else window.zenno.slash(text);
   } else {
-    addUser(text);
+    addUser(text, images);
     streaming = true;
     $stop.disabled = false;
     showTyping();
-    window.zenno.send(text);
+    window.zenno.send(text, images);
+    clearPending();
   }
   $input.value = "";
   autoGrow();
@@ -328,6 +351,99 @@ function autoGrow() {
   $input.style.height = Math.min($input.scrollHeight, 180) + "px";
 }
 $input.addEventListener("input", autoGrow);
+
+// ── 画像の添付（スクショ貼り付け / 📎 / ドラッグ&ドロップ）──
+let pendingImages = [];
+const $attachPreview = document.getElementById("attach-preview");
+const $fileInput = document.getElementById("file-input");
+
+function clearPending() {
+  pendingImages = [];
+  renderPending();
+}
+function renderPending() {
+  $attachPreview.innerHTML = "";
+  if (!pendingImages.length) {
+    $attachPreview.hidden = true;
+    return;
+  }
+  $attachPreview.hidden = false;
+  pendingImages.forEach((im, i) => {
+    const cell = document.createElement("div");
+    cell.className = "att-thumb";
+    const img = document.createElement("img");
+    img.src = imgUrl(im);
+    const x = document.createElement("button");
+    x.className = "att-x";
+    x.title = "外す";
+    x.textContent = "×";
+    x.addEventListener("click", () => {
+      pendingImages.splice(i, 1);
+      renderPending();
+    });
+    cell.appendChild(img);
+    cell.appendChild(x);
+    $attachPreview.appendChild(cell);
+  });
+}
+function fileToImage(file) {
+  return new Promise((resolve) => {
+    if (!file || !file.type.startsWith("image/")) return resolve(null);
+    const r = new FileReader();
+    r.onload = () => {
+      const m = /^data:([^;]+);base64,(.*)$/.exec(String(r.result));
+      resolve(m ? { media_type: m[1], data: m[2] } : null);
+    };
+    r.onerror = () => resolve(null);
+    r.readAsDataURL(file);
+  });
+}
+async function addFiles(files) {
+  for (const f of files) {
+    const im = await fileToImage(f);
+    if (im) pendingImages.push(im);
+  }
+  renderPending();
+}
+// スクショ等の貼り付け
+$input.addEventListener("paste", (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  const files = [];
+  for (const it of items) {
+    if (it.kind === "file" && it.type.startsWith("image/")) {
+      const f = it.getAsFile();
+      if (f) files.push(f);
+    }
+  }
+  if (files.length) {
+    e.preventDefault(); // 画像はテキスト貼り付けさせない
+    addFiles(files);
+  }
+});
+// 📎 でファイル選択
+document.getElementById("btn-attach").addEventListener("click", () => $fileInput.click());
+$fileInput.addEventListener("change", () => {
+  if ($fileInput.files && $fileInput.files.length) addFiles(Array.from($fileInput.files));
+  $fileInput.value = "";
+});
+// ドラッグ&ドロップ
+const $composer = document.getElementById("composer");
+$composer.addEventListener("dragover", (e) => {
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes("Files")) {
+    e.preventDefault();
+    $composer.classList.add("drag");
+  }
+});
+$composer.addEventListener("dragleave", () => $composer.classList.remove("drag"));
+$composer.addEventListener("drop", (e) => {
+  $composer.classList.remove("drag");
+  const files = e.dataTransfer ? Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/")) : [];
+  if (files.length) {
+    e.preventDefault();
+    addFiles(files);
+  }
+});
 
 // ── ツールバー ──
 document.querySelectorAll(".tool[data-cmd]").forEach((btn) => {
@@ -413,7 +529,7 @@ function clearLog() {
 function renderTranscript(items) {
   clearLog();
   for (const it of items || []) {
-    if (it.role === "user") addUser(it.text);
+    if (it.role === "user") addUser(it.text, it.images);
     else if (it.role === "igsh") addZennoText(it.text);
     else addNotice("plain", `<pre>${escapeHtml(it.text)}</pre>`);
   }
