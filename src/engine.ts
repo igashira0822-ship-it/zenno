@@ -12,6 +12,8 @@ import { deployServer } from "./deployTools.js";
 import { dbServer } from "./dbTools.js";
 import { webServer } from "./webTools.js";
 import { netlifyServer } from "./netlifyTools.js";
+import { createShotServer, type CaptureFn } from "./shot.js";
+import { createScheduleServer, type SchedulerApi } from "./schedule.js";
 import { matchByCwd, formatContext, formatList, findByName } from "./registry.js";
 import { formatPreferencesContext } from "./preferences.js";
 import { ledger } from "./ledger.js";
@@ -210,8 +212,11 @@ export function createEngine(opts: {
   // パッケージ(.exe)版で claude.exe を明示。asar内の仮想パスだとspawnがENOENTで失敗するため、
   // app.asar.unpacked の実体パスを渡す。dev時は undefined（SDKが通常解決）。
   pathToClaudeCodeExecutable?: string;
+  // GUI(Electron)が注入する高機能設備。CLIでは未注入＝各道具が「GUI版のみ」と縮退する。
+  captureScreenshot?: CaptureFn; // shot: BrowserWindow でURLを撮影
+  scheduler?: SchedulerApi; // schedule: 定期実行ジョブの登録/一覧/削除（常駐実行はElectron側）
 }): Engine {
-  const { cwd, onEvent, resume, pathToClaudeCodeExecutable } = opts;
+  const { cwd, onEvent, resume, pathToClaudeCodeExecutable, captureScreenshot, scheduler } = opts;
   let capturedSid: string | null = null;
 
   const here = matchByCwd(cwd);
@@ -259,6 +264,8 @@ export function createEngine(opts: {
         db: dbServer,
         web: webServer,
         netlify: netlifyServer,
+        shot: createShotServer(captureScreenshot),
+        schedule: createScheduleServer(scheduler),
       },
     } as any,
   });

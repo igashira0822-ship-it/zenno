@@ -14,7 +14,9 @@ import {
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync, renameSync } from "node:fs";
+import { spawn } from "node:child_process";
 import electronUpdater from "electron-updater";
+import { parseSchedule, isDue, type Job, type SchedulerApi } from "../src/schedule.js";
 
 const { autoUpdater } = electronUpdater;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +56,137 @@ function claudeExePath(): string | undefined {
 
 const send = (channel: string, payload: unknown) => win?.webContents.send(channel, payload);
 const secretFile = () => join(app.getPath("userData"), "secret.bin");
+
+// ───────────────── 高機能設備: スクショ撮影（engine へ注入）─────────────────
+// 隠し BrowserWindow で URL を開いて capturePage。Playwright 等の重依存を持ち込まず
+// Electron 標準だけで実機の見た目を撮る。PNG を base64 で返し（Claude が視覚確認）、ファイルにも保存。
+async function captureScreenshot(
+  url: string,
+  o: { width?: number; height?: number; waitMs?: number; out?: string }
+): Promise<{ ok: boolean; base64?: string; path?: string; message: string }> {
+  const width = o.width && o.width > 0 ? Math.min(o.width, 3840) : 1280;
+  const height = o.height && o.height > 0 ? Math.min(o.height, 2160) : 800;
+  const wait = o.waitMs != null && o.waitMs >= 0 ? Math.min(o.waitMs, 15_000) : 800;
+  const w = new BrowserWindow({
+    show: false,
+    width,
+    height,
+    paintWhenInitiallyHidden: true, // 非表示でも描画させ capturePage を成立させる
+    webPreferences: { offscreen: false, backgroundThrottling: false, sandbox: true, contextIsolation: true },
+  });
+  try {
+    await w.loadURL(url);
+    await new Promise((r) => setTimeout(r, wait));
+    const img = await w.webContents.capturePage();
+    const png = img.toPNG();
+    const out = o.out ?? join(app.getPath("userData"), `shot-${Date.now()}.png`);
+    try {
+      writeFileSync(out, png);
+    } catch {}
+    return { ok: true, base64: png.toString("base64"), path: out, message: `スクショ取得 ${width}x${height}: ${out}` };
+  } catch (e: any) {
+    return { ok: false, message: `スクショ失敗: ${e?.message ?? String(e)}` };
+  } finally {
+    try {
+      w.destroy();
+    } catch {}
+  }
+}
+
+// ───────────────── 高機能設備: 定期実行スケジューラ ─────────────────
+// ジョブは userData/schedules.json に永続化。毎分の常駐ランナーが due なジョブを spawn し、
+// 完了をOS通知＋ログ保存＋チャットへ通知。schedule 解析/判定は src/schedule.ts の純関数。
+const schedulesFile = () => join(app.getPath("userData"), "schedules.json");
+function loadJobs(): Job[] {
+  try {
+    const j = JSON.parse(readFileSync(schedulesFile(), "utf8"));
+    return Array.isArray(j) ? (j as Job[]) : [];
+  } catch {
+    return [];
+  }
+}
+function saveJobs(jobs: Job[]) {
+  try {
+    writeFileSync(schedulesFile(), JSON.stringify(jobs, null, 2));
+  } catch {}
+}
+const schedulerApi: SchedulerApi = {
+  add({ schedule, command, cwd }) {
+    if (!parseSchedule(schedule))
+      return { ok: false, message: `schedule 形式が不正: ${schedule}（例 every:30m / every:2h / daily:04:00）` };
+    if (!command?.trim()) return { ok: false, message: "command が空です" };
+    const jobs = loadJobs();
+    if (jobs.length >= 50) return { ok: false, message: "ジョブ上限(50)に達しています" };
+    const id = `${Date.now().toString(36)}${jobs.length}`;
+    jobs.push({ id, schedule, command, cwd: cwd || workCwd, createdAt: Date.now() });
+    saveJobs(jobs);
+    return { ok: true, message: `登録: #${id}  ${schedule}  「${command}」（GUI常駐中に実行されます）` };
+  },
+  list() {
+    return loadJobs();
+  },
+  remove(id) {
+    const jobs = loadJobs();
+    const next = jobs.filter((j) => j.id !== id);
+    if (next.length === jobs.length) return { ok: false, message: `#${id} は見つかりません` };
+    saveJobs(next);
+    return { ok: true, message: `削除: #${id}` };
+  },
+};
+
+let schedulerTimer: NodeJS.Timeout | null = null;
+function runDueJobs() {
+  const now = Date.now();
+  for (const job of loadJobs()) {
+    if (!isDue(job, now)) continue;
+    // 先に lastRun を確定保存＝次tickでの二重起動を防ぐ（最新を読み直して競合回避）
+    const before = loadJobs();
+    const t0 = before.find((x) => x.id === job.id);
+    if (t0) {
+      t0.lastRun = now;
+      saveJobs(before);
+    }
+    let out = "";
+    const cap = (d: Buffer) => {
+      if (out.length < 4000) out += d.toString();
+    };
+    const child = spawn(job.command, { cwd: job.cwd || workCwd, shell: true });
+    child.stdout?.on("data", cap);
+    child.stderr?.on("data", cap);
+    child.on("error", (e) => {
+      send("zenno:event", { type: "slash_output", text: `⏰ 定期実行 #${job.id} 起動失敗: ${e.message}` });
+    });
+    child.on("close", (code) => {
+      const ok = code === 0;
+      const cur = loadJobs();
+      const t = cur.find((x) => x.id === job.id);
+      if (t) {
+        t.lastStatus = ok ? "ok" : "fail";
+        saveJobs(cur);
+      }
+      try {
+        const logDir = join(app.getPath("userData"), "schedule-logs");
+        if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true });
+        writeFileSync(join(logDir, `${job.id}.log`), `[${new Date().toISOString()}] code=${code}\n${out}`);
+      } catch {}
+      if (Notification.isSupported()) {
+        new Notification({
+          title: `IGSH 定期実行 ${ok ? "完了" : "失敗"}`,
+          body: `${job.command}\n${ok ? "成功" : `終了コード ${code}`}`,
+        }).show();
+      }
+      send("zenno:event", {
+        type: "slash_output",
+        text: `⏰ 定期実行 #${job.id} ${ok ? "完了" : `失敗(code ${code})`}: ${job.command}`,
+      });
+    });
+  }
+}
+function startScheduler() {
+  if (schedulerTimer) return;
+  schedulerTimer = setInterval(runDueJobs, 60_000); // 毎分チェック
+  runDueJobs(); // 起動直後にも一度（daily の取りこぼし救済）
+}
 
 // ───────────────── セッション履歴 ─────────────────
 type ChatImage = { media_type: string; data: string };
@@ -302,6 +435,8 @@ async function startEngine(record?: SessionRecord) {
     cwd: current.cwd,
     resume,
     pathToClaudeCodeExecutable: claudeExePath(), // パッケージ版でのみ実体パス指定
+    captureScreenshot, // 高機能設備: スクショ撮影（GUI=Electronの能力を注入）
+    scheduler: schedulerApi, // 高機能設備: 定期実行ジョブの登録/一覧/削除
     onEvent: (e) => {
       // 履歴へ記録（表示はそのまま relay）
       if (e.type === "session_id") {
@@ -434,6 +569,7 @@ async function createWindow() {
   workCwd = loadWorkCwd(); // 永続化した作業フォルダ（無ければhome）。System32等を既定にしない
   await startEngine(); // 認証判定はstartEngine内（safeStorage or .env、無ければneed_token送出）
   setupAutoUpdate();
+  startScheduler(); // 定期実行の常駐ランナーを起動（毎分 due ジョブをチェック）
 }
 
 // 自動更新（パッケージ版のみ）。GitHub Releases 等の publish 設定が無いと feed 取得に失敗するため、
