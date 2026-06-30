@@ -320,15 +320,22 @@ window.zenno.onEvent((ev) => {
 });
 
 // ── 送信 ──
+// IGSH内蔵のローカルコマンド（アプリ側でローカル処理）。これ以外の /コマンド は
+// 通常メッセージとしてエンジン（Claude Code 本体・スキル全部ON）へ送り、Code流コマンド/スキルを使えるようにする。
+const LOCAL_SLASHES = new Set([
+  "help", "cost", "undo", "verify", "projects", "project", "model", "cwd", "stop", "interrupt", "exit", "quit",
+]);
 function submit() {
   const text = $input.value.trim();
   const images = pendingImages.slice();
   if ((!text && !images.length) || streaming) return;
-  if (text.startsWith("/")) {
-    // スラッシュコマンドは画像を伴わない（添付は残す）
-    if (text.toLowerCase() === "/stop") window.zenno.interrupt();
+  const slashCmd = text.startsWith("/") ? text.slice(1).split(/\s+/)[0].toLowerCase() : null;
+  if (slashCmd && LOCAL_SLASHES.has(slashCmd)) {
+    // 内蔵コマンド（画像は伴わない・添付は残す）
+    if (slashCmd === "stop" || slashCmd === "interrupt") window.zenno.interrupt();
     else window.zenno.slash(text);
   } else {
+    // 通常メッセージ＋「未知の /コマンド」はモデルへ転送（Code流コマンド/スキルが通る）
     addUser(text, images);
     streaming = true;
     $stop.disabled = false;
