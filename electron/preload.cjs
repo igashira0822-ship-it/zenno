@@ -12,12 +12,14 @@ let needTokenCb = null;
 let sessionsCb = null;
 let loadTranscriptCb = null;
 let clearLogCb = null;
+let updateReadyCb = null;
 ipcRenderer.on("zenno:banner", (_e, b) => bannerCb && bannerCb(b));
 ipcRenderer.on("zenno:cwd", (_e, p) => cwdCb && cwdCb(p));
 ipcRenderer.on("zenno:need_token", (_e, v) => needTokenCb && needTokenCb(v));
 ipcRenderer.on("igsh:sessions", (_e, list) => sessionsCb && sessionsCb(list));
 ipcRenderer.on("igsh:load_transcript", (_e, items) => loadTranscriptCb && loadTranscriptCb(items));
 ipcRenderer.on("igsh:clear_log", () => clearLogCb && clearLogCb());
+ipcRenderer.on("igsh:update_ready", (_e, version) => updateReadyCb && updateReadyCb(version));
 
 contextBridge.exposeInMainWorld("zenno", {
   // レンダラ → メイン
@@ -43,6 +45,10 @@ contextBridge.exposeInMainWorld("zenno", {
   getSettings: () => ipcRenderer.invoke("igsh:get_settings"),
   saveSettings: (s) => ipcRenderer.invoke("igsh:save_settings", s),
   readImage: (p) => ipcRenderer.invoke("igsh:read_image", p),
+  // 自動更新
+  updateStatus: () => ipcRenderer.invoke("igsh:update_status"),
+  applyUpdate: () => ipcRenderer.invoke("igsh:apply_update"),
+  checkUpdate: () => ipcRenderer.invoke("igsh:check_update"),
   // メイン → レンダラ
   onEvent: (cb) => {
     eventListeners.add(cb);
@@ -65,5 +71,8 @@ contextBridge.exposeInMainWorld("zenno", {
   },
   onClearLog: (cb) => {
     clearLogCb = cb;
+  },
+  onUpdateReady: (cb) => {
+    updateReadyCb = cb;
   },
 });

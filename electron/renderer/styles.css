@@ -27,6 +27,39 @@
 * {
   box-sizing: border-box;
 }
+/* 自動更新バナー */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--cyan-deep);
+  color: var(--text-bright);
+  border-bottom: 1px solid var(--cyan);
+  font: 500 13px var(--sans);
+}
+.update-banner .update-apply {
+  margin-left: auto;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--cyan);
+  color: #04201d;
+  font: 600 12px var(--sans);
+  cursor: pointer;
+}
+.update-banner .update-apply:hover { filter: brightness(1.08); }
+.update-banner .update-apply:disabled { opacity: 0.6; cursor: default; }
+.update-banner .update-dismiss {
+  border: 0;
+  background: transparent;
+  color: var(--text-bright);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.update-banner .update-dismiss:hover { opacity: 1; }
 html,
 body {
   margin: 0;

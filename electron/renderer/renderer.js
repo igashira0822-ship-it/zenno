@@ -657,3 +657,31 @@ refreshSidebar();
 
 $stop.disabled = true;
 $input.focus();
+
+// ── 自動更新バナー（DL完了で表示 → ワンクリックで quitAndInstall）──
+const $updateBanner = document.getElementById("update-banner");
+const $updateText = document.getElementById("update-text");
+const $btnApplyUpdate = document.getElementById("btn-apply-update");
+const $btnDismissUpdate = document.getElementById("btn-dismiss-update");
+function showUpdateBanner(version) {
+  if (!$updateBanner) return;
+  $updateText.textContent = `新しいバージョン v${version} が利用可能です`;
+  $updateBanner.hidden = false;
+}
+if ($btnApplyUpdate) {
+  $btnApplyUpdate.addEventListener("click", async () => {
+    $btnApplyUpdate.disabled = true;
+    $updateText.textContent = "更新を適用してIGSHを再起動しています…";
+    await window.zenno.applyUpdate(); // 直後にアプリが終了→インストール→再起動
+  });
+}
+if ($btnDismissUpdate) {
+  $btnDismissUpdate.addEventListener("click", () => {
+    $updateBanner.hidden = true;
+  });
+}
+window.zenno.onUpdateReady((version) => showUpdateBanner(version));
+// 起動時、すでにDL済みなら即バナー表示（このセッション開始前に落ちていた場合の取りこぼし防止）
+window.zenno.updateStatus().then((s) => {
+  if (s && s.ready) showUpdateBanner(s.version);
+});

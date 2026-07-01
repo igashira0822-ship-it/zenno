@@ -27,6 +27,12 @@
 
       <!-- 右: 本体 -->
       <div id="content">
+        <!-- 更新バナー（更新DL完了時に表示・quitAndInstallで即適用） -->
+        <div id="update-banner" class="update-banner" hidden>
+          <span id="update-text">新しいバージョンが利用可能です</span>
+          <button id="btn-apply-update" class="update-apply">今すぐ更新して再起動</button>
+          <button id="btn-dismiss-update" class="update-dismiss" title="あとで">×</button>
+        </div>
         <!-- ステータスバー -->
         <header id="statusbar">
           <span class="brand">IGSH</span>

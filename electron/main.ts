@@ -23,6 +23,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let win: BrowserWindow | null = null;
 let engine: import("../src/engine.js").Engine | null = null;
+// 自動更新: DL完了した更新の有無とバージョン（quitAndInstall のワンクリック適用用）
+let updateReady = false;
+let updateVersion = "";
+let applying = false; // 更新適用中フラグ（再入防止＋window-all-closedの二重quit抑止）
 let workCwd = process.cwd();
 
 // 作業フォルダ(cwd)を userData/cwd.txt に永続化（パッケージ版でSystem32等を既定にしない）。
@@ -529,6 +533,32 @@ function buildMenu() {
             }
           },
         },
+        {
+          label: "更新を今すぐ適用して再起動",
+          click: async () => {
+            if (!app.isPackaged) {
+              await dialog.showMessageBox(win!, { message: "開発版です。パッケージ版(.exe)でのみ動作します。" });
+              return;
+            }
+            if (updateReady) {
+              applyUpdateNow();
+              return;
+            }
+            const r = await dialog.showMessageBox(win!, {
+              message: "適用できる更新がまだDLされていません。今すぐ確認しますか？",
+              buttons: ["更新を確認", "閉じる"],
+              defaultId: 0,
+              cancelId: 1,
+            });
+            if (r.response === 0) {
+              try {
+                await autoUpdater.checkForUpdates();
+              } catch (e: any) {
+                await dialog.showMessageBox(win!, { message: "更新確認に失敗: " + (e?.message ?? e) });
+              }
+            }
+          },
+        },
         { type: "separator" },
         {
           label: "設計図 BLUEPRINT を開く",
@@ -579,14 +609,37 @@ function setupAutoUpdate() {
   try {
     autoUpdater.autoDownload = true;
     autoUpdater.on("update-downloaded", (info: { version: string }) => {
+      updateReady = true;
+      updateVersion = info.version;
+      // レンダラへ通知し、画面上部に「今すぐ更新して再起動」バナーを出す。
+      // 環境依存で "終了時の自動適用" が不発でも、ボタン(quitAndInstall)で確実に適用できる。
+      send("igsh:update_ready", info.version);
       send("zenno:event", {
         type: "slash_output",
-        text: `更新 v${info.version} をダウンロードしました。次回起動時に自動適用されます。`,
+        text: `更新 v${info.version} をDL済み。画面上部の「今すぐ更新して再起動」またはヘルプメニューから即適用できます。`,
       });
     });
     autoUpdater.on("error", () => {});
     autoUpdater.checkForUpdatesAndNotify().catch(() => {});
   } catch {}
+}
+
+// DL済み更新を今すぐ適用して再起動（ワンクリック適用の中核）。
+// 再入ガード（メニューとバナー双方から呼べるため）＋ engine を先に畳んで（asar.unpacked の
+// claude.exe 等のファイルロックを解いてから）インストーラに渡す。setImmediate で IPC 応答を
+// 返してから quit するのが electron-updater の推奨。
+async function applyUpdateNow(): Promise<boolean> {
+  if (!updateReady || applying) return false;
+  applying = true; // これ以降 window-all-closed の app.quit() を抑止し、quitAndInstall に一本化
+  try {
+    await disposeEngine(); // SDKサブプロセスを終了（ファイルロック回避）
+  } catch {}
+  setImmediate(() => {
+    try {
+      autoUpdater.quitAndInstall(false, true); // isSilent=false, forceRunAfter=true（適用後に再起動）
+    } catch {}
+  });
+  return true;
 }
 
 // GPUシェーダーのディスクキャッシュ移動が "アクセス拒否(0x5)" で失敗する環境向けに無効化
@@ -606,6 +659,9 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(createWindow);
 }
 app.on("window-all-closed", async () => {
+  // 更新適用中は quitAndInstall にライフサイクルを任せる（無条件 app.quit() だと
+  // インストーラ起動＋再起動シーケンスと競合し "落ちるが更新が当たらない" を招く既知の罠）。
+  if (applying) return;
   await disposeEngine();
   app.quit();
 });
@@ -678,6 +734,19 @@ ipcMain.handle("igsh:unarchive_session", (_e, id: string) => {
   const ok = unarchiveSession(id);
   pushSessionList();
   return ok;
+});
+// 自動更新: 状態問い合わせ / 今すぐ適用 / 手動確認（レンダラのバナー用）
+ipcMain.handle("igsh:update_status", () => ({ ready: updateReady, version: updateVersion }));
+ipcMain.handle("igsh:apply_update", () => applyUpdateNow());
+ipcMain.handle("igsh:check_update", async () => {
+  if (!app.isPackaged) return { ok: false, message: "開発版では自動更新は動きません（パッケージ版のみ）" };
+  try {
+    const r = await autoUpdater.checkForUpdates();
+    const v = (r as any)?.updateInfo?.version;
+    return { ok: true, message: v ? `確認: v${v}（DL完了後にバナーが出ます）` : "更新情報を取得しました" };
+  } catch (e: any) {
+    return { ok: false, message: "更新確認に失敗: " + (e?.message ?? String(e)) };
+  }
 });
 ipcMain.handle("igsh:delete_session", (_e, id: string) => {
   const ok = deleteSession(id);
