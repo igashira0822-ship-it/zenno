@@ -1,6 +1,6 @@
 {
   "name": "zenno",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "type": "module",
   "description": "全脳（ZENNO）— Claude Code のエンジンを中核に、GPT・Gemini など複数の生産AIを道具として合体させた統合ターミナル開発エージェント",

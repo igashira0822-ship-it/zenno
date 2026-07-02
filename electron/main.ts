@@ -13,7 +13,7 @@ import {
 } from "electron";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, readdirSync, renameSync, appendFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import electronUpdater from "electron-updater";
 import { parseSchedule, isDue, type Job, type SchedulerApi } from "../src/schedule.js";
@@ -26,7 +26,15 @@ let engine: import("../src/engine.js").Engine | null = null;
 // 自動更新: DL完了した更新の有無とバージョン（quitAndInstall のワンクリック適用用）
 let updateReady = false;
 let updateVersion = "";
+let updateInstallerPath = ""; // update-downloaded の downloadedFile（quitAndInstall 不発時のフォールバック用）
 let applying = false; // 更新適用中フラグ（再入防止＋window-all-closedの二重quit抑止）
+
+// updater の挙動を userData/updater.log に記録（「更新が無いのにバナーが出る」等の再発時に追えるように）。
+function ulog(msg: string) {
+  try {
+    appendFileSync(join(app.getPath("userData"), "updater.log"), `${new Date().toISOString()} ${msg}\n`);
+  } catch {}
+}
 let workCwd = process.cwd();
 
 // 作業フォルダ(cwd)を userData/cwd.txt に永続化（パッケージ版でSystem32等を既定にしない）。
@@ -608,9 +616,16 @@ function setupAutoUpdate() {
   if (!app.isPackaged) return;
   try {
     autoUpdater.autoDownload = true;
-    autoUpdater.on("update-downloaded", (info: { version: string }) => {
+    autoUpdater.on("checking-for-update", () => ulog("checking-for-update"));
+    autoUpdater.on("update-available", (info: { version: string }) => ulog(`update-available v${info?.version}`));
+    autoUpdater.on("update-not-available", (info: { version: string }) => ulog(`update-not-available (feed v${info?.version})`));
+    autoUpdater.on("update-downloaded", (info: { version: string; downloadedFile?: string }) => {
+      ulog(`update-downloaded v${info?.version} file=${info?.downloadedFile ?? ""} (current v${app.getVersion()})`);
+      // 現行と同じバージョンへの「偽更新」は無視（実害: 押しても何も起きないバナーが出続ける実績あり）。
+      if (!info?.version || info.version === app.getVersion()) return;
       updateReady = true;
       updateVersion = info.version;
+      updateInstallerPath = info.downloadedFile ?? "";
       // レンダラへ通知し、画面上部に「今すぐ更新して再起動」バナーを出す。
       // 環境依存で "終了時の自動適用" が不発でも、ボタン(quitAndInstall)で確実に適用できる。
       send("igsh:update_ready", info.version);
@@ -619,7 +634,7 @@ function setupAutoUpdate() {
         text: `更新 v${info.version} をDL済み。画面上部の「今すぐ更新して再起動」またはヘルプメニューから即適用できます。`,
       });
     });
-    autoUpdater.on("error", () => {});
+    autoUpdater.on("error", (e: Error) => ulog(`error: ${e?.message ?? e}`));
     autoUpdater.checkForUpdatesAndNotify().catch(() => {});
   } catch {}
 }
@@ -631,13 +646,29 @@ function setupAutoUpdate() {
 async function applyUpdateNow(): Promise<boolean> {
   if (!updateReady || applying) return false;
   applying = true; // これ以降 window-all-closed の app.quit() を抑止し、quitAndInstall に一本化
+  ulog(`applyUpdateNow v${updateVersion}`);
   try {
     await disposeEngine(); // SDKサブプロセスを終了（ファイルロック回避）
   } catch {}
+  // この環境では quitAndInstall が不発になる実績があるため、8秒たってもプロセスが生きていたら
+  // DL済みインストーラを直接 /S 起動して自分は終了する（今日の復旧タスクと同じ・実証済みの経路）。
+  setTimeout(() => {
+    ulog(`quitAndInstall did not exit in 8s -> fallback installer=${updateInstallerPath}`);
+    try {
+      if (updateInstallerPath && existsSync(updateInstallerPath)) {
+        spawn(updateInstallerPath, ["--updated", "/S", "--force-run"], { detached: true, stdio: "ignore" }).unref();
+      }
+    } catch {}
+    try {
+      app.exit(0);
+    } catch {}
+  }, 8000);
   setImmediate(() => {
     try {
-      autoUpdater.quitAndInstall(false, true); // isSilent=false, forceRunAfter=true（適用後に再起動）
-    } catch {}
+      autoUpdater.quitAndInstall(true, true); // isSilent=true（UI無しで確実に）, forceRunAfter=true（適用後に再起動）
+    } catch (e: any) {
+      ulog(`quitAndInstall threw: ${e?.message ?? e}`);
+    }
   });
   return true;
 }

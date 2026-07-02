@@ -672,7 +672,15 @@ if ($btnApplyUpdate) {
   $btnApplyUpdate.addEventListener("click", async () => {
     $btnApplyUpdate.disabled = true;
     $updateText.textContent = "更新を適用してIGSHを再起動しています…";
-    await window.zenno.applyUpdate(); // 直後にアプリが終了→インストール→再起動
+    const ok = await window.zenno.applyUpdate(); // true なら直後にアプリが終了→インストール→再起動
+    if (!ok) {
+      // 適用できる更新が無い（既に最新／状態ずれ）のに「再起動しています…」を出し続けない
+      $updateText.textContent = "適用できる更新はありません（既に最新です）";
+      setTimeout(() => {
+        $updateBanner.hidden = true;
+        $btnApplyUpdate.disabled = false;
+      }, 3000);
+    }
   });
 }
 if ($btnDismissUpdate) {
